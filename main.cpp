@@ -1,58 +1,104 @@
 #include <iostream>
 #include <filesystem>
 #include <string>
-#include <map>
 #include <iomanip>
+#include <vector>
+#include <algorithm>
+#include <map>
 
 namespace fs = std::filesystem;
 
-// Helper to format byte sizes
+struct FolderInfo {
+    int depth;
+    std::string path;
+    uintmax_t size;
+};
+
+// Format size as human-readable string
 std::string format_size(uintmax_t size) {
-    const char* sizes[] = { "B", "KB", "MB", "GB", "TB" };
+    const char* units[] = {"B", "KB", "MB", "GB", "TB"};
     int order = 0;
-    double readable_size = static_cast<double>(size);
-    while (readable_size >= 1024 && order < 4) {
+    double readable = static_cast<double>(size);
+    while (readable >= 1024 && order < 4) {
         order++;
-        readable_size /= 1024;
+        readable /= 1024;
     }
     std::ostringstream out;
-    out << std::fixed << std::setprecision(2) << readable_size << " " << sizes[order];
+    out << std::fixed << std::setprecision(2) << readable << " " << units[order];
     return out.str();
 }
 
-// Recursively calculate size of any directory
+// Get total size of a folder
 uintmax_t get_directory_size(const fs::path& path) {
-    uintmax_t total_size = 0;
+    uintmax_t size = 0;
     try {
         for (const auto& entry : fs::recursive_directory_iterator(path, fs::directory_options::skip_permission_denied)) {
             if (fs::is_regular_file(entry)) {
-                total_size += fs::file_size(entry);
+                size += fs::file_size(entry);
             }
         }
-    } catch (const std::exception& e) {
-        std::cerr << "Error accessing " << path << ": " << e.what() << '\n';
-    }
-    return total_size;
+    } catch (...) {}
+    return size;
 }
 
-// Print subfolders and their sizes up to max_depth
-void print_subfolder_sizes(const fs::path& path, int current_depth, int max_depth) {
+// Recursively collect folder info, sorting siblings by size
+void collect_sorted_folders(const fs::path& path, int depth, int max_depth, std::vector<FolderInfo>& result) {
+    std::vector<FolderInfo> children;
+
     try {
         for (const auto& entry : fs::directory_iterator(path, fs::directory_options::skip_permission_denied)) {
             if (fs::is_directory(entry)) {
-                uintmax_t subfolder_size = get_directory_size(entry.path());
-                std::cout << std::string(current_depth * 2, ' ')
-                          << entry.path().string() << " -> " << format_size(subfolder_size) << '\n';
-
-                if (max_depth == -1 || current_depth < max_depth) {
-                    print_subfolder_sizes(entry.path(), current_depth + 1, max_depth);
-                }
+                uintmax_t size = get_directory_size(entry);
+                children.push_back({depth, entry.path().string(), size});
             }
         }
-    } catch (const std::exception& e) {
-        std::cerr << "Error accessing directory: " << e.what() << '\n';
+    } catch (...) {}
+
+    // Sort current level's folders by size descending
+    std::sort(children.begin(), children.end(), [](const FolderInfo& a, const FolderInfo& b) {
+        return a.size > b.size;
+    });
+
+    // Add to result and recurse
+    for (const auto& folder : children) {
+        result.push_back(folder);
+        if (max_depth == -1 || folder.depth < max_depth) {
+            collect_sorted_folders(folder.path, folder.depth + 1, max_depth, result);
+        }
     }
 }
+
+void print_table(const std::vector<FolderInfo>& info, const fs::path& root, uintmax_t root_size) {
+    // Determine max path length for formatting
+    size_t max_path_length = root.string().length();
+    for (const auto& entry : info) {
+        size_t full_length = std::string(entry.depth * 2, ' ').length() + entry.path.length();
+        if (full_length > max_path_length)
+            max_path_length = full_length;
+    }
+    max_path_length = std::min(max_path_length, static_cast<size_t>(120)); // optional safety limit
+
+    // Print header
+    std::cout << std::left << std::setw(7) << "Depth"
+              << "| " << std::left << std::setw(max_path_length) << "Folder Path"
+              << "| " << std::right << std::setw(10) << "Size" << '\n';
+
+    std::cout << std::string(10 + max_path_length + 13, '-') << '\n';
+
+    // Print root
+    std::cout << std::left << std::setw(7) << 0
+              << "| " << std::left << std::setw(max_path_length) << root.string()
+              << "| " << std::right << std::setw(10) << format_size(root_size) << '\n';
+
+    // Print rows
+    for (const auto& entry : info) {
+        std::string indented_path = std::string(entry.depth * 2, ' ') + entry.path;
+        std::cout << std::left << std::setw(7) << entry.depth
+                  << "| " << std::left << std::setw(max_path_length) << indented_path
+                  << "| " << std::right << std::setw(10) << format_size(entry.size) << '\n';
+    }
+}
+
 
 int main() {
     std::string root_path;
@@ -65,19 +111,19 @@ int main() {
     std::cin >> max_depth;
 
     fs::path root(root_path);
-
     if (!fs::exists(root) || !fs::is_directory(root)) {
-        std::cerr << "Invalid directory path.\n";
+        std::cerr << "Invalid directory.\n";
         return 1;
     }
 
-    // Calculate total size first
-    uintmax_t total_size = get_directory_size(root);
-    std::cout << "\nTotal size of " << root_path << ": " << format_size(total_size) << "\n\n";
+    uintmax_t root_size = get_directory_size(root);
 
-    // Then list subfolder sizes
-    std::cout << "Subfolder sizes:\n";
-    print_subfolder_sizes(root, 1, max_depth);
+    std::vector<FolderInfo> folder_data;
+    collect_sorted_folders(root, 1, max_depth, folder_data);
+
+    std::cout << "\nFolder Size Report (sorted by size within folders):\n\n";
+    print_table(folder_data, root, root_size);
 
     return 0;
 }
+
