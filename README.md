@@ -6,7 +6,7 @@ A command-line utility to recursively scan directories, calculate folder sizes, 
 
 - Computes **total size** of a root directory (including all subfolders).
 - Recursively calculates **subfolder sizes**.
-- **Limits recursion depth** with a user-defined value (or unlimited).
+- **Display depth** with a user-defined value.
 - **Sorts folders by size** within each parent directory.
 - Prints output as a **formatted table**, aligned by folder name length.
 
@@ -14,7 +14,7 @@ A command-line utility to recursively scan directories, calculate folder sizes, 
 
 ```bash
 Enter the directory path to scan: /Users/you/Documents
-Enter max depth (-1 for unlimited): 2
+Enter how many levels deep to show (e.g., 2): 2
 
 Folder Size Report (sorted by size within folders):
 
@@ -35,10 +35,10 @@ Depth | Folder Path                           | Size
 
 You will be prompted to enter:
 - The root directory path to scan.
-- Maximum recursion depth (-1 for unlimited).
+- How many levels to display
 
 ## ⚙️ Options
-- Max depth: Restricts how deep to scan (e.g., 1 = only top-level folders).
+- Max depth: Always goes to end of path.
 - Sorting: Folders are sorted by size within each parent.
 - Cross-platform: Works on Linux, macOS, and Windows with appropriate filesystem permissions.
 
